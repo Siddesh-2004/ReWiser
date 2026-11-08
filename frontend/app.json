@@ -1,0 +1,32 @@
+{
+  "expo": {
+    "name": "Voice Revision",
+    "slug": "voice-revision-app",
+    "version": "1.0.0",
+    "scheme": "voicerevision",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "bundleIdentifier": "com.voicerevision.app"
+    },
+    "android": {
+      "package": "com.voicerevision.app"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Voice Revision uses the microphone so you can answer interview questions out loud.",
+          "speechRecognitionPermission": "Voice Revision uses speech recognition to turn your spoken answers into text.",
+          "androidSpeechServicePackages": [
+            "com.google.android.googlequicksearchbox"
+          ]
+        }
+      ],
+      "expo-status-bar",
+      "expo-font"
+    ]
+  }
+}
