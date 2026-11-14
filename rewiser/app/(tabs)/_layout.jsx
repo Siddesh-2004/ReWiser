@@ -22,24 +22,24 @@ function CapsuleTabBar({ state, descriptors }) {
   const router = useRouter();
 
   return (
-    <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, alignItems: 'center', paddingHorizontal: 20, paddingTop: 8, paddingBottom: Math.max(insets.bottom, 20), pointerEvents: 'box-none' }}>
+    <View style={{ position: 'absolute', left: 0, right: 0, bottom: 10, alignItems: 'center', paddingTop: 6, paddingBottom: Math.max(insets.bottom, 8), pointerEvents: 'box-none' }}>
       <View
         style={{
-          width: '100%',
-          maxWidth: 428,
+          width: '92%',
+          maxWidth: 360,
           flexDirection: 'row',
           alignItems: 'center',
-          padding: 6,
+          padding: 4,
           borderWidth: 1,
-          borderColor: 'rgba(255, 255, 255, 0.72)',
-          borderRadius: 30,
+          borderColor: 'rgba(255, 255, 255, 0.58)',
+          borderRadius: 27,
           backgroundColor: 'rgba(255, 255, 255, 0.84)',
-          elevation: 14,
+          elevation: 10,
           shadowColor: colors.onSurface,
-          shadowOpacity: 0.10,
-          shadowRadius: 20,
-          shadowOffset: { width: 0, height: 7 },
-          ...(Platform.OS === 'web' ? { backdropFilter: 'blur(18px)' } : {}),
+          shadowOpacity: 0.08,
+          shadowRadius: 14,
+          shadowOffset: { width: 0, height: 5 },
+          ...(Platform.OS === 'web' ? { backdropFilter: 'blur(16px)' } : {}),
         }}
       >
         {state.routes.map((route, index) => {
@@ -62,11 +62,11 @@ function CapsuleTabBar({ state, descriptors }) {
               style={({ pressed }) => ({
                 flex: 1,
                 minWidth: 0,
-                height: 58,
+                height: 50,
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: 3,
-                borderRadius: 23,
+                borderRadius: 21,
                 backgroundColor: focused ? 'rgba(25, 25, 25, 0.055)' : 'transparent',
                 opacity: pressed ? 0.72 : 1,
               })}
@@ -79,7 +79,6 @@ function CapsuleTabBar({ state, descriptors }) {
           );
         })}
       </View>
-      <View style={{ width: 128, height: 4, marginTop: 14, borderRadius: 2, backgroundColor: 'rgba(25, 25, 25, 0.20)' }} />
     </View>
   );
 }
@@ -89,7 +88,13 @@ export default function TabsLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        sceneStyle: { paddingBottom: 136 },
+        sceneStyle: { paddingBottom: 0 },
+        tabBarStyle: {
+          position: 'absolute',
+          backgroundColor: 'transparent',
+          borderTopWidth: 0,
+          elevation: 0,
+        },
         tabBarHideOnKeyboard: true,
       }}
       tabBar={(props) => <CapsuleTabBar {...props} />}

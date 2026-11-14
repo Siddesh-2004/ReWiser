@@ -36,6 +36,7 @@ function RootNavigator() {
 
   return (
     <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }}>
+      <Stack.Screen name="auth" />
       {/* Logged in: tabs exist. Logged out: Expo Router falls back to the (auth) group. */}
       <Stack.Protected guard={!!token}>
         <Stack.Screen name="(tabs)" />

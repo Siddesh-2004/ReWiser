@@ -33,6 +33,19 @@ export function AuthProvider({ children }) {
     } catch {}
   }, []);
 
+  const completeSignIn = useCallback(async (queryParams) => {
+    if (!queryParams?.token) return false;
+    await persist({
+      token: String(queryParams.token),
+      user: {
+        name: queryParams.name ? String(queryParams.name) : null,
+        email: queryParams.email ? String(queryParams.email) : null,
+        avatarUrl: queryParams.avatar ? String(queryParams.avatar) : null,
+      },
+    });
+    return true;
+  }, [persist]);
+
   // On launch: restore the saved session, if any.
   useEffect(() => {
     configureApi({ getToken: () => tokenRef.current, onUnauthorized: signOut });
@@ -79,14 +92,7 @@ export function AuthProvider({ children }) {
     if (!queryParams?.token) throw new Error('Sign-in did not return a session. Please try again.');
 
     console.info('[auth] persisting app session');
-    await persist({
-      token: String(queryParams.token),
-      user: {
-        name: queryParams.name ? String(queryParams.name) : null,
-        email: queryParams.email ? String(queryParams.email) : null,
-        avatarUrl: queryParams.avatar ? String(queryParams.avatar) : null,
-      },
-    });
+    await completeSignIn(queryParams);
     console.info('[auth] app session persisted');
     return true;
   };
@@ -94,5 +100,5 @@ export function AuthProvider({ children }) {
   // Dev only: lets you see the home screen without a running backend.
   const devSkip = () => persist({ token: 'dev-token', user: { name: 'Siddesh', email: 'dev@example.com', avatarUrl: null } });
 
-  return <AuthContext.Provider value={{ ...state, signInWithNotion, devSkip, signOut }}>{children}</AuthContext.Provider>;
+  return <AuthContext.Provider value={{ ...state, signInWithNotion, completeSignIn, devSkip, signOut }}>{children}</AuthContext.Provider>;
 }
