@@ -58,8 +58,13 @@ export const notionCallback = asyncHandler(async (req: Request, res: Response) =
     console.info('[auth] callback completed; returning to app');
     res.redirect(withParams(target, { token: sessionToken }));
   } catch (err) {
-    // The real reason stays in our logs; the app only gets a generic code
-    console.error('[auth] login failed:', err instanceof Error ? err.message : 'Unknown error');
+    const cause = err instanceof Error ? err.cause : undefined;
+    if (cause instanceof Error) {
+      const code = 'code' in cause && typeof cause.code === 'string' ? cause.code : undefined;
+      console.error('[auth] login failed:', { code, message: cause.message });
+    } else {
+      console.error('[auth] login failed:', err instanceof Error ? err.name : 'Unknown error');
+    }
     res.redirect(withParams(target, { error: 'login_failed' }));
   }
 });
