@@ -7,7 +7,7 @@ export type GeneratedQuestion = { question: string; context: string; difficulty:
 export type TextEvaluation = { correctnessScore: number; feedback: string };
 export type AudioEvaluation = TextEvaluation & { transcript: string; fluencyScore: number };
 
-const TIMEOUT_MS = 60_000; // the AI server takes 10-16s per call
+const TIMEOUT_MS = 90_000;
 
 async function call<T>(path: string, init: RequestInit): Promise<T> {
   let res: Response;

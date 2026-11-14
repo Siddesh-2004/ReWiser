@@ -1,7 +1,10 @@
 import json
+import logging
 import os
 import subprocess
 import tempfile
+import threading
+import time
 from typing import List, Optional
 
 import joblib
@@ -13,8 +16,13 @@ from pydantic import BaseModel, Field
 
 from features import load_audio, extract_features
 
-OLLAMA_URL = os.environ.get("OLLAMA_URL", "").rstrip("/")
-OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "gemma4:e4b")
+OPENROUTER_URL = "https://openrouter.ai/api/v1"
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
+OPENROUTER_MODEL_QUEUE = os.environ.get("OPENROUTER_MODEL_QUEUE", "")
+OPENROUTER_TIMEOUT_SECONDS = 25
+OPENROUTER_RETRIES = 2
+OPENROUTER_BACKOFF_BASE_SECONDS = 1
+OPENROUTER_MODEL_CACHE_SECONDS = 3600
 WHISPER_MODEL = os.environ.get("WHISPER_MODEL", "tiny.en")   # try base.en for accents
 API_KEY = os.environ.get("API_KEY")                          # optional shared secret
 NUM_CTX = 8192
@@ -22,6 +30,10 @@ LLM_TIMEOUT = 25                 # contract: respond within 30 s
 MAX_CONTENT_CHARS = 16000
 MAX_AUDIO_SECONDS = 300
 MAX_AUDIO_BYTES = 30 * 1024 * 1024
+logger = logging.getLogger(__name__)
+_model_cache: List[str] = []
+_model_cache_loaded_at = 0.0
+_model_cache_lock = threading.Lock()
 
 
 def check_key(x_api_key: Optional[str] = Header(None)):
@@ -35,28 +47,97 @@ _whisper = None
 
 
 # ------------------------------------------------------------------ LLM helper
+def get_free_models() -> List[str]:
+    global _model_cache_loaded_at
+    configured = [model.strip() for model in OPENROUTER_MODEL_QUEUE.split(",") if model.strip()]
+    if configured:
+        if any(not model.endswith(":free") for model in configured):
+            raise HTTPException(503, "OPENROUTER_MODEL_QUEUE must contain only :free model IDs")
+        return list(dict.fromkeys(configured))
+
+    now = time.monotonic()
+    with _model_cache_lock:
+        if _model_cache and now - _model_cache_loaded_at < OPENROUTER_MODEL_CACHE_SECONDS:
+            return _model_cache.copy()
+        try:
+            response = requests.get(
+                f"{OPENROUTER_URL}/models",
+                params={
+                    "max_price": 0,
+                    "max_output_price": 0,
+                    "endpoints": "/api/v1/chat/completions",
+                    "supported_parameters": "response_format",
+                    "sort": "most-popular",
+                    "limit": 100,
+                },
+                headers={"Authorization": f"Bearer {OPENROUTER_API_KEY}"},
+                timeout=8,
+            )
+            response.raise_for_status()
+            entries = response.json().get("data", [])
+            models = [
+                entry["id"]
+                for entry in entries
+                if entry.get("id", "").endswith(":free")
+                and entry.get("pricing", {}).get("prompt") == "0"
+                and entry.get("pricing", {}).get("completion") == "0"
+                and "response_format" in entry.get("supported_parameters", [])
+            ][:10]
+            if not models:
+                raise ValueError("OpenRouter returned no free JSON-capable chat models")
+            _model_cache[:] = models
+            _model_cache_loaded_at = now
+            return models.copy()
+        except (requests.RequestException, ValueError, KeyError, TypeError) as error:
+            if _model_cache:
+                logger.warning("Could not refresh OpenRouter models; using cached queue: %s", error)
+                return _model_cache.copy()
+            raise HTTPException(503, f"Could not load OpenRouter free models: {error}") from error
+
+
 def ask_llm(system: str, user: str, schema: dict) -> dict:
-    if not OLLAMA_URL:
-        raise HTTPException(503, "OLLAMA_URL is not set on the AI server")
+    if not OPENROUTER_API_KEY:
+        raise HTTPException(503, "OPENROUTER_API_KEY is not set on the AI server")
+
+    models = get_free_models()
     payload = {
-        "model": OLLAMA_MODEL,
+        "models": models,
         "stream": False,
-        "format": schema,
-        "options": {"temperature": 0.2, "num_ctx": NUM_CTX},
+        "temperature": 0.2,
+        "response_format": {"type": "json_object"},
         "messages": [{"role": "system", "content": system},
                      {"role": "user", "content": user}],
     }
-    try:
-        r = requests.post(f"{OLLAMA_URL}/api/chat", json=payload,
-                          headers={"ngrok-skip-browser-warning": "true"},
-                          timeout=LLM_TIMEOUT)
-        r.raise_for_status()
-    except requests.RequestException as e:
-        raise HTTPException(503, f"LLM unavailable: {e}")
-    try:
-        return json.loads(r.json()["message"]["content"])
-    except (KeyError, ValueError) as e:
-        raise HTTPException(500, f"LLM returned unreadable output: {e}")
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json",
+        "X-OpenRouter-Title": "Re-Wiser",
+    }
+    for attempt in range(OPENROUTER_RETRIES + 1):
+        try:
+            response = requests.post(
+                f"{OPENROUTER_URL}/chat/completions",
+                json=payload,
+                headers=headers,
+                timeout=OPENROUTER_TIMEOUT_SECONDS,
+            )
+            response.raise_for_status()
+            content = response.json()["choices"][0]["message"]["content"]
+            return json.loads(content)
+        except requests.HTTPError as error:
+            status = error.response.status_code if error.response is not None else 0
+            if status not in {408, 429, 500, 502, 503, 504}:
+                raise HTTPException(502, f"OpenRouter request failed ({status})") from error
+            last_error = error
+        except (requests.RequestException, json.JSONDecodeError, KeyError, IndexError, TypeError) as error:
+            last_error = error
+
+        if attempt < OPENROUTER_RETRIES:
+            delay = OPENROUTER_BACKOFF_BASE_SECONDS * (2 ** attempt)
+            logger.warning("OpenRouter model queue failed; retrying in %s seconds", delay)
+            time.sleep(delay)
+
+    raise HTTPException(503, f"OpenRouter model queue failed after retries: {last_error}") from last_error
 
 
 # ------------------------------------------------------- /generate-questions
@@ -293,4 +374,4 @@ def evaluate_audio(
 
 @app.get("/health")
 def health():
-    return {"ok": True, "llm_configured": bool(OLLAMA_URL), "model": OLLAMA_MODEL}
+    return {"ok": True, "llm_configured": bool(OPENROUTER_API_KEY), "provider": "openrouter"}
