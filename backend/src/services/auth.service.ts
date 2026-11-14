@@ -5,7 +5,7 @@ import { db } from '../db';
 import { users } from '../db/schemas';
 import { requireEnv } from '../lib/env';
 import { encrypt } from '../lib/crypto';
-import { exchangeCodeForToken } from './notion.service';
+import { buildAuthorizeUrl, exchangeCodeForToken } from './notion.service';
 
 const STATE_TTL = '10m';
 const SESSION_TTL = '30d';
@@ -16,40 +16,43 @@ function jwtKey(): Uint8Array {
 
 // ---- Step 1: where to send the student ----
 
-export async function getAuthorizeUrl(): Promise<string> {
-  const state = await new SignJWT({ purpose: 'notion_oauth_state' })
+export async function getAuthorizeUrl(appRedirect: string): Promise<string> {
+  const state = await new SignJWT({ purpose: 'notion_oauth_state', app_redirect: appRedirect })
     .setProtectedHeader({ alg: 'HS256' })
     .setJti(crypto.randomUUID())
     .setIssuedAt()
     .setExpirationTime(STATE_TTL)
     .sign(jwtKey());
 
-  const url = new URL('https://api.notion.com/v1/oauth/authorize');
-  url.searchParams.set('client_id', requireEnv('NOTION_CLIENT_ID'));
-  url.searchParams.set('response_type', 'code');
-  url.searchParams.set('owner', 'user');
-  url.searchParams.set('redirect_uri', requireEnv('NOTION_REDIRECT_URI'));
-  url.searchParams.set('state', state);
-  return url.toString();
+  return buildAuthorizeUrl(state);
 }
 
-async function verifyState(state: string): Promise<void> {
+async function verifyState(state: string) {
   const { payload } = await jwtVerify(state, jwtKey(), { algorithms: ['HS256'] });
   if (payload.purpose !== 'notion_oauth_state') {
     throw new Error('Invalid state');
+  }
+  return payload;
+}
+
+// Where to send the student back to; null if the state is invalid or expired
+export async function readStateRedirect(state: string): Promise<string | null> {
+  try {
+    const payload = await verifyState(state);
+    return typeof payload.app_redirect === 'string' ? payload.app_redirect : null;
+  } catch {
+    return null;
   }
 }
 
 // ---- Step 2: Notion sends the student back with a code ----
 
-// src/services/auth.service.ts (replace the whole handleCallback function)
 export async function handleCallback(code: string, state: string) {
   await verifyState(state);
 
+  console.info('[auth] exchanging authorization code with Notion');
   const token = await exchangeCodeForToken(code);
-
-  // Temporary: confirm which owner shape Notion really returns. Safe to log, no secrets.
-  console.log('[auth] owner type:', token.owner.type);
+  console.info('[auth] Notion token exchange completed');
 
   if (token.owner.type !== 'user') {
     throw new Error('Notion did not return a user for this authorization');
@@ -68,6 +71,7 @@ export async function handleCallback(code: string, state: string) {
     notionRefreshToken: token.refresh_token ? encrypt(token.refresh_token) : null,
   };
 
+  console.info('[auth] saving authorized user');
   const [user] = await db
     .insert(users)
     .values(values)
@@ -76,8 +80,11 @@ export async function handleCallback(code: string, state: string) {
       set: { ...values, updatedAt: new Date() },
     })
     .returning();
+  console.info('[auth] authorized user saved');
 
+  console.info('[auth] signing app session');
   const sessionToken = await signSessionToken(user.id);
+  console.info('[auth] app session signed');
 
   // Never return Notion's tokens to the app
   return {

@@ -19,6 +19,7 @@ export const questions = pgTable(
     position: integer('position').notNull(), // order within the quiz
     question: text('question').notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
+    context: text('context').notNull(), // evaluator's reference, never sent to the app
   },
   (table) => [uniqueIndex('questions_quiz_position_unique').on(table.quizId, table.position)],
 );

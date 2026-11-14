@@ -1,17 +1,8 @@
-// src/middleware/auth.middleware.ts
+// src/middlewares/auth.middleware.ts
 import type { NextFunction, Request, Response } from 'express';
 import { verifySessionToken } from '../services/auth.service';
 import asyncHandler from '../utils/asynchandler';
 import { ApiError } from '../utils/apiErrors';
-
-// Adds userId to Express's Request type
-declare global {
-  namespace Express {
-    interface Request {
-      userId?: string;
-    }
-  }
-}
 
 export const requireAuth = asyncHandler(
   async (req: Request, _res: Response, next: NextFunction) => {

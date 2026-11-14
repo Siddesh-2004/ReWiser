@@ -1,0 +1,18 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Expo Web",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"run",
+				"start",
+				"--",
+				"--web"
+			],
+			"isBackground": true,
+			"problemMatcher": []
+		}
+	]
+}

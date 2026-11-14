@@ -1,0 +1,44 @@
+{
+  "expo": {
+    "name": "Re-Wiser",
+    "slug": "rewiser",
+    "version": "1.0.0",
+    "scheme": "rewiser",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "icon": "./assets/icon.png",
+    "ios": {
+      "bundleIdentifier": "com.rewiser.app"
+    },
+    "android": {
+      "package": "com.rewiser.app",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#06080a"
+      }
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-font",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Allow Re-Wiser to record spoken quiz answers."
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 140,
+          "backgroundColor": "#faf9f6"
+        }
+      ],
+      "expo-web-browser"
+    ]
+  }
+}

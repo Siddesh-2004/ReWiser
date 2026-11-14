@@ -119,6 +119,16 @@ export type NotionBlock = {
   parent: NotionParent;
 };
 
+export type NotionContentBlock = {
+  object: 'block';
+  id: string;
+  type: string;
+  has_children?: boolean;
+  children?: NotionContentBlock[];
+  parent?: NotionParent;
+  [key: string]: any;
+};
+
 type NotionList<T> = {
   results: T[];
   has_more: boolean;
@@ -182,6 +192,33 @@ export async function searchAll(accessToken: string): Promise<NotionSearchItem[]
 // One block, used to walk up when an item's parent is a block
 export async function getBlock(accessToken: string, blockId: string): Promise<NotionBlock> {
   return notionRequest<NotionBlock>(accessToken, 'GET', `/v1/blocks/${blockId}`);
+}
+
+// Recursively fetch a page's child blocks, including nested containers.
+export async function getBlockTree(accessToken: string, blockId: string): Promise<NotionContentBlock[]> {
+  const results: NotionContentBlock[] = [];
+  let cursor: string | undefined;
+
+  do {
+    const params = new URLSearchParams({ page_size: '100' });
+    if (cursor) params.set('start_cursor', cursor);
+
+    const page = await notionRequest<NotionList<NotionContentBlock>>(
+      accessToken,
+      'GET',
+      `/v1/blocks/${blockId}/children?${params.toString()}`,
+    );
+    results.push(...(page.results ?? []));
+    cursor = page.has_more && page.next_cursor ? page.next_cursor : undefined;
+  } while (cursor);
+
+  for (const block of results) {
+    if (block.has_children) {
+      block.children = await getBlockTree(accessToken, block.id);
+    }
+  }
+
+  return results;
 }
 
 // Title of a page or data source; empty string if it has none
